@@ -1,26 +1,22 @@
 const express = require('express');
 
+const pool = require('../db');  // Import the DB connection pool
+
 const router = express.Router();
 
-// Example route to test the MariaDB connection and query data
-router.get('/foods', async (req, res) => {
-  let connection;
+router.get('/', async (req, res) => {
   try {
-    console.log('attempting to connect to db');
-	  // Get a connection from the pool
-    connection = await pool.getConnection();
-     
-    // Query the database
-    const rows = await req.db.query('SELECT * FROM foods');
-    console.log(rows); 
-    // Send the result back to the client
-    res.json(rows);
-  } catch (err) {
-    console.error('Error fetching data:', err);
-    res.status(500).send('Error fetching data');
-  } finally {
-    // Always release the connection back to the pool
-    if (connection) connection.release();
+    // Get a connection from the pool
+    const conn = await pool.promise().getConnection();
+
+    // Execute the query to get all agents
+    const [rows, fields] = await conn.execute('SELECT * FROM foods');
+    res.json(rows);  // Send the result as JSON
+
+    conn.release();  // Release the connection back to the pool
+  } catch (error) {
+    console.error('Error fetching foods:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 });
 
