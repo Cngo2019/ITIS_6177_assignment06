@@ -236,6 +236,65 @@ router.delete('/:agentCode', async (req, res) => {
     }
 });
 
+
+
+// PATCH: Partially update an agent's details by agentCode (No Commission Validation)
+router.patch('/:agentCode', async (req, res) => {
+    const agentCode = req.params.agentCode.trim();
+    const sanitizedBody = trimObjectValues(req.body);
+  
+    let conn;
+    try {
+      conn = await pool.promise().getConnection();
+  
+      const updateFields = [];
+      const updateValues = [];
+  
+      if (sanitizedBody.agentName) {
+        updateFields.push("AGENT_NAME = ?");
+        updateValues.push(sanitizedBody.agentName);
+      }
+      if (sanitizedBody.workingArea) {
+        updateFields.push("WORKING_AREA = ?");
+        updateValues.push(sanitizedBody.workingArea);
+      }
+      if (sanitizedBody.commission) {
+        updateFields.push("COMMISSION = ?");
+        updateValues.push(sanitizedBody.commission);
+      }
+      if (sanitizedBody.phoneNumber) {
+        updateFields.push("PHONE_NO = ?");
+        updateValues.push(sanitizedBody.phoneNumber);
+      }
+      if (sanitizedBody.country) {
+        updateFields.push("COUNTRY = ?");
+        updateValues.push(sanitizedBody.country);
+      }
+  
+      if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'No fields to update' });
+      }
+  
+      updateValues.push(agentCode);
+      const updateQuery = `UPDATE agents SET ${updateFields.join(', ')} WHERE AGENT_CODE = ?`;
+  
+      const [result] = await conn.execute(updateQuery, updateValues);
+  
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Agent not found' });
+      }
+  
+      res.status(200).json({ message: 'Agent updated successfully' });
+    } catch (error) {
+      console.error('Database error:', error);
+      res.status(500).json({ message: 'Error occurred. The request is invalid.' });
+    } finally {
+      if (conn) conn.release();
+    }
+  });
+
+
+
 // Helper functions
 const sanitizeInput = (input) => (typeof input === 'string' ? sanitizeHtml(input.trim()).replace(/['";`]/g, '') : input);
 const trimObjectValues = (obj) => {
@@ -246,6 +305,8 @@ const trimObjectValues = (obj) => {
     });
     return trimmedObject;
 };
+
+
 const convertToCamelCaseKeys = (row) => {
     if (!row || typeof row !== 'object') return row;
     const keyMapping = {
