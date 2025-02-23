@@ -1,72 +1,78 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');  // Import the DB connection pool
+const sanitizeHtml = require('sanitize-html');
 
 // Route to get all agents
 router.get('/', async (req, res) => {
+  let conn;
   try {
-    const conn = await pool.promise().getConnection();
-    const [rows, fields] = await conn.execute('SELECT * FROM agents');
-    res.json(rows);  // Send the result as JSON
-    conn.release();  // Release the connection back to the pool
+    conn = await pool.promise().getConnection();
+    const [rows] = await conn.execute('SELECT * FROM agents');
+    res.json(rows);
   } catch (error) {
     console.error('Error fetching agents:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // Route to get agent by AGENT_CODE
 router.get('/:agentCode', async (req, res) => {
   const { agentCode } = req.params;
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
-    const [rows, fields] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [agentCode]);
+    conn = await pool.promise().getConnection();
+    const [rows] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [agentCode]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Agent not found' });
     }
 
     res.json(rows[0]);
-    conn.release();
   } catch (error) {
     console.error('Error fetching agent by AGENT_CODE:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // Route to get agents by WORKING_AREA
 router.get('/area/:workingArea', async (req, res) => {
   const { workingArea } = req.params;
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
-    const [rows, fields] = await conn.execute('SELECT * FROM agents WHERE WORKING_AREA = ?', [workingArea]);
+    conn = await pool.promise().getConnection();
+    const [rows] = await conn.execute('SELECT * FROM agents WHERE WORKING_AREA = ?', [workingArea]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: 'No agents found in this area' });
     }
 
     res.json(rows);
-    conn.release();
   } catch (error) {
     console.error('Error fetching agents by WORKING_AREA:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // PUT: Update an agent by AGENT_CODE
 router.put('/:agentCode', async (req, res) => {
-  const { agentCode } = req.params;
-  const { AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY } = req.body;
+  const agentCode = sanitizeInput(req.params.agentCode);
+  const sanitizedBody = sanitizeBody(req.body);
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
-
+    conn = await pool.promise().getConnection();
     const [result] = await conn.execute(
-      `UPDATE agents SET AGENT_NAME = ?, WORKING_AREA = ?, COMMISSION = ?, PHONE_NO = ?, COUNTRY = ?
-       WHERE AGENT_CODE = ?`,
-      [AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY, agentCode]
+      `UPDATE agents SET AGENT_NAME = ?, WORKING_AREA = ?, COMMISSION = ?, PHONE_NO = ?, COUNTRY = ? WHERE AGENT_CODE = ?`,
+      [sanitizedBody.AGENT_NAME, sanitizedBody.WORKING_AREA, sanitizedBody.COMMISSION, sanitizedBody.PHONE_NO, sanitizedBody.COUNTRY, agentCode]
     );
 
     if (result.affectedRows === 0) {
@@ -74,78 +80,67 @@ router.put('/:agentCode', async (req, res) => {
     }
 
     res.status(200).json({ message: 'Agent updated successfully' });
-    conn.release();
   } catch (error) {
     console.error('Error updating agent:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // POST: Create a new agent
 router.post('/', async (req, res) => {
-  const { AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY } = req.body;
+  let { AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY } = req.body;
+  const sanitizedAgentCode = sanitizeInput(AGENT_CODE);
+  const sanitizedBody = sanitizeBody(req.body);
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
+    conn = await pool.promise().getConnection();
 
     // Check if the agent already exists
-    const [existingAgent] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [AGENT_CODE]);
+    const [existingAgent] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [sanitizedAgentCode]);
     if (existingAgent.length > 0) {
       return res.status(400).json({ message: 'Agent with this code already exists' });
     }
 
-    // Insert the new agent into the database
+    // Insert the new agent
     const [result] = await conn.execute(
       'INSERT INTO agents (AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY) VALUES (?, ?, ?, ?, ?, ?)',
-      [AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY]
+      [sanitizedAgentCode, sanitizedBody.AGENT_NAME, sanitizedBody.WORKING_AREA, sanitizedBody.COMMISSION, sanitizedBody.PHONE_NO, sanitizedBody.COUNTRY]
     );
 
     res.status(201).json({ message: 'Agent created successfully', agentId: result.insertId });
-    conn.release();
   } catch (error) {
     console.error('Error creating agent:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // PATCH: Partially update an agent's details by AGENT_CODE
 router.patch('/:agentCode', async (req, res) => {
-  const { agentCode } = req.params;
-  const { AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY } = req.body;
+  const agentCode = sanitizeInput(req.params.agentCode);
+  const sanitizedBody = sanitizeBody(req.body);
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
+    conn = await pool.promise().getConnection();
 
     const updateFields = [];
     const updateValues = [];
-    
-    if (AGENT_NAME) {
-      updateFields.push('AGENT_NAME = ?');
-      updateValues.push(AGENT_NAME);
-    }
-    if (WORKING_AREA) {
-      updateFields.push('WORKING_AREA = ?');
-      updateValues.push(WORKING_AREA);
-    }
-    if (COMMISSION) {
-      updateFields.push('COMMISSION = ?');
-      updateValues.push(COMMISSION);
-    }
-    if (PHONE_NO) {
-      updateFields.push('PHONE_NO = ?');
-      updateValues.push(PHONE_NO);
-    }
-    if (COUNTRY) {
-      updateFields.push('COUNTRY = ?');
-      updateValues.push(COUNTRY);
-    }
+
+    Object.keys(sanitizedBody).forEach((key) => {
+      updateFields.push(`${key} = ?`);
+      updateValues.push(sanitizedBody[key]);
+    });
 
     if (updateFields.length === 0) {
       return res.status(400).json({ message: 'No fields to update' });
     }
 
-    updateValues.push(agentCode);  // Add agentCode at the end of the array
-    
+    updateValues.push(agentCode);
     const updateQuery = `UPDATE agents SET ${updateFields.join(', ')} WHERE AGENT_CODE = ?`;
 
     const [result] = await conn.execute(updateQuery, updateValues);
@@ -155,20 +150,21 @@ router.patch('/:agentCode', async (req, res) => {
     }
 
     res.status(200).json({ message: 'Agent updated successfully' });
-    conn.release();
   } catch (error) {
     console.error('Error partially updating agent:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
 // DELETE: Delete an agent by AGENT_CODE
 router.delete('/:agentCode', async (req, res) => {
-  const { agentCode } = req.params;
+  const agentCode = sanitizeInput(req.params.agentCode);
+  let conn;
 
   try {
-    const conn = await pool.promise().getConnection();
-
+    conn = await pool.promise().getConnection();
     const [result] = await conn.execute('DELETE FROM agents WHERE AGENT_CODE = ?', [agentCode]);
 
     if (result.affectedRows === 0) {
@@ -176,12 +172,25 @@ router.delete('/:agentCode', async (req, res) => {
     }
 
     res.status(200).json({ message: 'Agent deleted successfully' });
-    conn.release();
   } catch (error) {
     console.error('Error deleting agent:', error);
     res.status(500).json({ message: 'Internal Server Error' });
+  } finally {
+    if (conn) conn.release();
   }
 });
+
+// Helper function to sanitize input
+const sanitizeInput = (input) => (typeof input === 'string' ? sanitizeHtml(input.trim()).replace(/['";`]/g, '') : input);
+
+// Sanitize request body for update and insert operations
+const sanitizeBody = (body) => {
+  const sanitized = {};
+  Object.keys(body).forEach((key) => {
+    sanitized[key] = typeof body[key] === 'string' ? sanitizeInput(body[key]) : body[key];
+  });
+  return sanitized;
+};
 
 module.exports = router;
 
