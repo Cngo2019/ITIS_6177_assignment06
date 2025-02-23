@@ -3,10 +3,6 @@ const router = express.Router();
 const pool = require('../db');  // Import the DB connection pool
 const sanitizeHtml = require('sanitize-html');
 
-// Function to validate if a value is a valid decimal
-const isValidDecimal = (value) => {
-  return !isNaN(value) && value.toString().match(/^\d+(\.\d{1,2})?$/);
-};
 // Function to trim all string values in an object
 const trimObjectValues = (obj) => {
   if (!obj || typeof obj !== 'object') return obj;
@@ -16,7 +12,6 @@ const trimObjectValues = (obj) => {
   });
   return trimmedObject;
 };
-
 // GET: Retrieve all agents (Trimmed)
 router.get('/', async (req, res) => {
   let conn;
@@ -58,34 +53,34 @@ router.get('/:agentCode', async (req, res) => {
   }
 });
 
-
-// POST: Create a new agent
+// POST: Create a new agent (No Commission Validation)
 router.post('/', async (req, res) => {
-  let { AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY } = req.body;
-  const sanitizedAgentCode = sanitizeInput(AGENT_CODE);
-  const sanitizedBody = sanitizeBody(req.body);
+  const sanitizedBody = trimObjectValues(req.body);
   
-  if (!isValidDecimal(sanitizedBody.COMMISSION)) {
-    return res.status(400).json({ message: 'Invalid commission value. Must be a valid decimal.' });
-  }
-
   let conn;
   try {
     conn = await pool.promise().getConnection();
 
     // Check if the agent already exists
-    const [existingAgent] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [sanitizedAgentCode]);
+    const [existingAgent] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [sanitizedBody.agentCode]);
     if (existingAgent.length > 0) {
       return res.status(400).json({ message: 'Agent with this code already exists' });
     }
 
     // Insert the new agent
-    const [result] = await conn.execute(
+    await conn.execute(
       'INSERT INTO agents (AGENT_CODE, AGENT_NAME, WORKING_AREA, COMMISSION, PHONE_NO, COUNTRY) VALUES (?, ?, ?, ?, ?, ?)',
-      [sanitizedAgentCode, sanitizedBody.AGENT_NAME, sanitizedBody.WORKING_AREA, sanitizedBody.COMMISSION, sanitizedBody.PHONE_NO, sanitizedBody.COUNTRY]
+      [
+        sanitizedBody.agentCode,
+        sanitizedBody.agentName,
+        sanitizedBody.workingArea,
+        sanitizedBody.commission, // No validation
+        sanitizedBody.phoneNumber,
+        sanitizedBody.country
+      ]
     );
 
-    res.status(201).json({ message: 'Agent created successfully', agentId: result.insertId });
+    res.status(201).json(sanitizedBody);
   } catch (error) {
     console.error('Database error:', error);
     res.status(500).json({ message: 'Error occurred. The request is invalid.' });
@@ -94,21 +89,25 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT: Update an agent by AGENT_CODE
+// PUT: Update an agent by agentCode (No Commission Validation)
 router.put('/:agentCode', async (req, res) => {
-  const agentCode = sanitizeInput(req.params.agentCode);
-  const sanitizedBody = sanitizeBody(req.body);
-
-  if (!isValidDecimal(sanitizedBody.COMMISSION)) {
-    return res.status(400).json({ message: 'Invalid commission value. Must be a valid decimal.' });
-  }
+  const agentCode = req.params.agentCode.trim();
+  const sanitizedBody = trimObjectValues(req.body);
 
   let conn;
   try {
     conn = await pool.promise().getConnection();
     const [result] = await conn.execute(
-      `UPDATE agents SET AGENT_NAME = ?, WORKING_AREA = ?, COMMISSION = ?, PHONE_NO = ?, COUNTRY = ? WHERE AGENT_CODE = ?`,
-      [sanitizedBody.AGENT_NAME, sanitizedBody.WORKING_AREA, sanitizedBody.COMMISSION, sanitizedBody.PHONE_NO, sanitizedBody.COUNTRY, agentCode]
+      `UPDATE agents SET AGENT_NAME = ?, WORKING_AREA = ?, COMMISSION = ?, PHONE_NO = ?, COUNTRY = ? 
+      WHERE AGENT_CODE = ?`,
+      [
+        sanitizedBody.agentName,
+        sanitizedBody.workingArea,
+        sanitizedBody.commission, // No validation
+        sanitizedBody.phoneNumber,
+        sanitizedBody.country,
+        agentCode
+      ]
     );
 
     if (result.affectedRows === 0) {
@@ -124,14 +123,10 @@ router.put('/:agentCode', async (req, res) => {
   }
 });
 
-// PATCH: Partially update an agent's details by AGENT_CODE
+// PATCH: Partially update an agent's details by AGENT_CODE (No Commission Validation)
 router.patch('/:agentCode', async (req, res) => {
-  const agentCode = sanitizeInput(req.params.agentCode);
-  const sanitizedBody = sanitizeBody(req.body);
-
-  if (sanitizedBody.COMMISSION && !isValidDecimal(sanitizedBody.COMMISSION)) {
-    return res.status(400).json({ message: 'Invalid commission value. Must be a valid decimal.' });
-  }
+  const agentCode = req.params.agentCode.trim();
+  const sanitizedBody = trimObjectValues(req.body);
 
   let conn;
   try {
@@ -182,12 +177,13 @@ router.delete('/:agentCode', async (req, res) => {
 
     res.status(200).json({ message: 'Agent deleted successfully' });
   } catch (error) {
-    console.error('Database error:', error);
-    res.status(500).json({ message: 'Error occurred. The request is invalid.' });
+    console.error('Error deleting agent:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   } finally {
     if (conn) conn.release();
   }
 });
+
 
 // Helper function to sanitize input
 const sanitizeInput = (input) => (typeof input === 'string' ? sanitizeHtml(input.trim()).replace(/['";`]/g, '') : input);
