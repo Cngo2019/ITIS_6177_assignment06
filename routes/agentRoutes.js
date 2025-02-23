@@ -239,6 +239,51 @@ router.delete('/:agentCode', async (req, res) => {
 
 
 // PATCH: Partially update an agent's details by agentCode (No Commission Validation)
+/**
+ * @swagger
+ * /agents/{agentCode}:
+ *   patch:
+ *     summary: Partially update an agent
+ *     description: Updates specific fields of an agent without affecting others.
+ *     parameters:
+ *       - name: agentCode
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The agent's unique identifier.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               agentName:
+ *                 type: string
+ *                 example: "John Doe"
+ *               workingArea:
+ *                 type: string
+ *                 example: "New York"
+ *               commission:
+ *                 type: string
+ *                 example: "0.05"
+ *               phoneNumber:
+ *                 type: string
+ *                 example: "077-25814763"
+ *               country:
+ *                 type: string
+ *                 example: "USA"
+ *     responses:
+ *       200:
+ *         description: Agent updated successfully.
+ *       400:
+ *         description: No fields to update.
+ *       404:
+ *         description: Agent not found.
+ *       500:
+ *         description: Internal Server Error.
+ */
 router.patch('/:agentCode', async (req, res) => {
     const agentCode = req.params.agentCode.trim();
     const sanitizedBody = trimObjectValues(req.body);
