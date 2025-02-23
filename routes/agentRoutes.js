@@ -7,14 +7,27 @@ const sanitizeHtml = require('sanitize-html');
 const isValidDecimal = (value) => {
   return !isNaN(value) && value.toString().match(/^\d+(\.\d{1,2})?$/);
 };
+// Function to trim all string values in an object
+const trimObjectValues = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const trimmedObject = {};
+  Object.keys(obj).forEach((key) => {
+    trimmedObject[key] = typeof obj[key] === 'string' ? obj[key].trim() : obj[key];
+  });
+  return trimmedObject;
+};
 
-// Route to get all agents
+// GET: Retrieve all agents (Trimmed)
 router.get('/', async (req, res) => {
   let conn;
   try {
     conn = await pool.promise().getConnection();
     const [rows] = await conn.execute('SELECT * FROM agents');
-    res.json(rows);
+
+    // Trim spaces from all string values in each row
+    const cleanedRows = rows.map(trimObjectValues);
+
+    res.json(cleanedRows);
   } catch (error) {
     console.error('Database error:', error);
     res.status(500).json({ message: 'Error occurred. The request is invalid.' });
@@ -22,6 +35,29 @@ router.get('/', async (req, res) => {
     if (conn) conn.release();
   }
 });
+
+// GET: Retrieve an agent by AGENT_CODE (Trimmed)
+router.get('/:agentCode', async (req, res) => {
+  const agentCode = req.params.agentCode.trim();
+  let conn;
+
+  try {
+    conn = await pool.promise().getConnection();
+    const [rows] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [agentCode]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Agent not found' });
+    }
+
+    res.json(trimObjectValues(rows[0])); // Trim spaces before returning
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ message: 'Error occurred. The request is invalid.' });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 
 // POST: Create a new agent
 router.post('/', async (req, res) => {
