@@ -8,10 +8,10 @@ router.get('/', async (req, res) => {
     try {
       conn = await pool.promise().getConnection();
       const [rows] = await conn.execute('SELECT * FROM agents');
-  
+
       // Convert all rows to camelCase
       const cleanedRows = rows.map(row => convertToCamelCaseKeys(row));
-  
+
       res.json(cleanedRows);
     } catch (error) {
       console.error('Database error:', error);
@@ -20,20 +20,20 @@ router.get('/', async (req, res) => {
       if (conn) conn.release();
     }
   });
-  
+
   // GET: Retrieve an agent by agentCode (Convert to camelCase)
   router.get('/:agentCode', async (req, res) => {
     const agentCode = req.params.agentCode.trim();
     let conn;
-  
+
     try {
       conn = await pool.promise().getConnection();
       const [rows] = await conn.execute('SELECT * FROM agents WHERE AGENT_CODE = ?', [agentCode]);
-  
+
       if (rows.length === 0) {
         return res.status(404).json({ message: 'Agent not found' });
       }
-  
+
       res.json(convertToCamelCaseKeys(rows[0])); // Convert and trim before returning
     } catch (error) {
       console.error('Database error:', error);
@@ -84,14 +84,14 @@ router.post('/', async (req, res) => {
 router.patch('/:agentCode', async (req, res) => {
     const agentCode = req.params.agentCode.trim();
     const sanitizedBody = trimObjectValues(req.body);
-  
+
     let conn;
     try {
       conn = await pool.promise().getConnection();
-  
+
       const updateFields = [];
       const updateValues = [];
-  
+
       if (sanitizedBody.agentName) {
         updateFields.push("AGENT_NAME = ?");
         updateValues.push(sanitizedBody.agentName);
@@ -112,15 +112,50 @@ router.patch('/:agentCode', async (req, res) => {
         updateFields.push("COUNTRY = ?");
         updateValues.push(sanitizedBody.country);
       }
-  
+
       if (updateFields.length === 0) {
         return res.status(400).json({ message: 'No fields to update' });
       }
-  
+
       updateValues.push(agentCode);
       const updateQuery = `UPDATE agents SET ${updateFields.join(', ')} WHERE AGENT_CODE = ?`;
-  
+
       const [result] = await conn.execute(updateQuery, updateValues);
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: 'Agent not found' });
+      }
+
+      res.status(200).json({ message: 'Agent updated successfully' });
+    } catch (error) {
+      console.error('Database error:', error);
+      res.status(500).json({ message: 'Error occurred. The request is invalid.' });
+    } finally {
+      if (conn) conn.release();
+    }
+  });
+
+
+// PUT: Update an agent by agentCode (No Commission Validation)
+router.put('/:agentCode', async (req, res) => {
+    const agentCode = req.params.agentCode.trim();
+    const sanitizedBody = trimObjectValues(req.body);
+  
+    let conn;
+    try {
+      conn = await pool.promise().getConnection();
+      const [result] = await conn.execute(
+        `UPDATE agents SET AGENT_NAME = ?, WORKING_AREA = ?, COMMISSION = ?, PHONE_NO = ?, COUNTRY = ? 
+        WHERE AGENT_CODE = ?`,
+        [
+          sanitizedBody.agentName,
+          sanitizedBody.workingArea,
+          sanitizedBody.commission, // No validation
+          sanitizedBody.phoneNumber,
+          sanitizedBody.country,
+          agentCode
+        ]
+      );
   
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: 'Agent not found' });
@@ -134,46 +169,6 @@ router.patch('/:agentCode', async (req, res) => {
       if (conn) conn.release();
     }
   });
-  
-
-// PATCH: Partially update an agent's details by AGENT_CODE (No Commission Validation)
-router.patch('/:agentCode', async (req, res) => {
-  const agentCode = req.params.agentCode.trim();
-  const sanitizedBody = trimObjectValues(req.body);
-
-  let conn;
-  try {
-    conn = await pool.promise().getConnection();
-
-    const updateFields = [];
-    const updateValues = [];
-
-    Object.keys(sanitizedBody).forEach((key) => {
-      updateFields.push(`${key} = ?`);
-      updateValues.push(sanitizedBody[key]);
-    });
-
-    if (updateFields.length === 0) {
-      return res.status(400).json({ message: 'No fields to update' });
-    }
-
-    updateValues.push(agentCode);
-    const updateQuery = `UPDATE agents SET ${updateFields.join(', ')} WHERE AGENT_CODE = ?`;
-
-    const [result] = await conn.execute(updateQuery, updateValues);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Agent not found' });
-    }
-
-    res.status(200).json({ message: 'Agent updated successfully' });
-  } catch (error) {
-    console.error('Database error:', error);
-    res.status(500).json({ message: 'Error occurred. The request is invalid.' });
-  } finally {
-    if (conn) conn.release();
-  }
-});
 
 // DELETE: Delete an agent by AGENT_CODE
 router.delete('/:agentCode', async (req, res) => {
@@ -210,11 +205,11 @@ const trimObjectValues = (obj) => {
     });
     return trimmedObject;
   };
-  
+
   // Function to explicitly convert UPPER_CASE database fields to camelCase
   const convertToCamelCaseKeys = (row) => {
       if (!row || typeof row !== 'object') return row;
-    
+
       const keyMapping = {
         AGENT_CODE: "agentCode",
         AGENT_NAME: "agentName",
@@ -223,13 +218,13 @@ const trimObjectValues = (obj) => {
         PHONE_NO: "phoneNumber", // Explicit mapping for PHONE_NO
         COUNTRY: "country"
       };
-    
+
       const camelCaseObject = {};
       Object.keys(row).forEach((key) => {
         const camelKey = keyMapping[key] || key.toLowerCase(); // Use mapping or fallback to lowercase
         camelCaseObject[camelKey] = typeof row[key] === 'string' ? row[key].trim() : row[key]; // Trim spaces
       });
-    
+
       return camelCaseObject;
     };
 
