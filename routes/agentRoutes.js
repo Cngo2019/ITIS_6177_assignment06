@@ -5,6 +5,33 @@ const sanitizeHtml = require('sanitize-html');
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     Agent:
+ *       type: object
+ *       properties:
+ *         agentCode:
+ *           type: string
+ *           example: "A007"
+ *         agentName:
+ *           type: string
+ *           example: "John Doe"
+ *         workingArea:
+ *           type: string
+ *           example: "New York"
+ *         commission:
+ *           type: string
+ *           example: "0.05"
+ *         phoneNumber:
+ *           type: string
+ *           example: "077-25814763"
+ *         country:
+ *           type: string
+ *           example: "USA"
+ */
+
+/**
+ * @swagger
  * /agents:
  *   get:
  *     summary: Retrieve all agents
