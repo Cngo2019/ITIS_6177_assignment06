@@ -2,7 +2,27 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 
-
+/**
+ * @swagger
+ * /say:
+ *   get:
+ *     summary: Fetch data using a keyword
+ *     description: Makes a request to an external API using the provided keyword.
+ *     parameters:
+ *       - in: query
+ *         name: keyword
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The keyword to be used in the API request
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *       400:
+ *         description: Bad request, missing keyword
+ *       500:
+ *         description: Server error
+ */
 router.get('/say', 
 async (req, res) => {
     try {
